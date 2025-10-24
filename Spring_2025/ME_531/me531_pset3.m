@@ -1,0 +1,145 @@
+% Cart-Pole LQR Simulation - Question 1 of Pset3
+
+% System Parameters
+M = 5;       
+m = 1;       
+L = 2;       
+b = 1;       
+g = 9.8;     
+
+
+% Linearized State-Space Matrices
+A = [0   1   0       0;
+     0   -b/M b*m*g/M   0;
+     0   0   0       1;
+     0   -b/(M*L)  -b*g*(M+m)/(M*L)   0];
+
+B = [0;
+     1/M;
+     0;
+     1/(M*L)];
+
+
+% LQR Controller Design
+Q = diag([1, 1, 200, 1]);   % Weights on [x, x_dot, theta, theta_dot]
+R = 0.01;                       % Weight on control effort
+
+
+% LQR gain
+[K, S, E] = lqr(A, B, Q, R);
+
+
+% Initial Conditions
+x0 = -1;
+x_dot0 = 0;
+theta0 = pi + 0.1;
+theta_dot0 = 0;
+state0 = [x0; x_dot0; theta0; theta_dot0];
+
+% Sim time
+tspan = linspace(0, 20, 500);
+
+% Nonlinear System Dynamics
+odefun_nonlinear = @(t, x) cart_pole_dynamics(x, M, m, L, b, g, K);
+
+% Simulate system with LQR
+[t_lqr, x_lqr] = ode45(odefun_nonlinear, tspan, state0);
+
+% 100 Random Stable Eigenvalues 
+num_random = 100;
+all_x = zeros(length(tspan), num_random + 1); % Store x for all sims
+all_x_dot = zeros(length(tspan), num_random + 1);
+all_theta = zeros(length(tspan), num_random + 1);
+all_theta_dot = zeros(length(tspan), num_random + 1);
+
+% keep LQR response
+all_x(:, 1) = x_lqr(:, 1);
+all_x_dot(:, 1) = x_lqr(:, 2);
+all_theta(:, 1) = x_lqr(:, 3);
+all_theta_dot(:, 1) = x_lqr(:, 4);
+
+for i = 1:num_random
+    % Gen. random stable eigenvalues
+    eigenvalues = -3.5 + (3.5 - 0.5) * rand(4, 1);  %  [-3.5, -0.5]
+    eigenvalues = real(eigenvalues); % Ensure real eigenvalues
+
+    % K from eigenvalues
+    K_random = place(A, B, eigenvalues);
+
+    % Simulate nonlinear system with random K
+    odefun_random = @(t, x) cart_pole_dynamics(x, M, m, L, b, g, K_random);
+    [~, x_random] = ode45(odefun_random, tspan, state0);
+
+    all_x(:, i+1) = x_random(:, 1);
+    all_x_dot(:, i+1) = x_random(:, 2);
+    all_theta(:, i+1) = x_random(:, 3);
+    all_theta_dot(:, i+1) = x_random(:, 4);
+end
+
+% --- Plots ---
+figure;
+
+%  x
+subplot(2, 2, 1);
+plot(tspan, all_x, 'b','LineWidth', 1);
+xlabel('Time (s)');
+ylabel('Cart Position x (m)');
+title('Cart Position');
+grid on;
+hold on;
+plot(tspan, all_x(:, 1), 'r', 'LineWidth', 2.5, 'DisplayName', 'LQR'); % LQR
+hold off;
+%legend; 
+
+% x_dot
+subplot(2, 2, 2);
+plot(tspan, all_x_dot, 'b', 'LineWidth', 1);
+xlabel('Time (s)');
+ylabel('Cart Velocity x_dot (m/s)');
+title('Cart Velocity');
+grid on;
+hold on;
+plot(tspan, all_x_dot(:, 1), 'g', 'LineWidth', 2.5); 
+hold off;
+
+
+% theta
+subplot(2, 2, 3);
+plot(tspan, all_theta, 'b', 'LineWidth', 1);
+xlabel('Time (s)');
+ylabel('Pendulum Angle theta (rad)');
+title('Pendulum Angle');
+grid on;
+hold on;
+plot(tspan, all_theta(:, 1), 'y', 'LineWidth', 2.5); 
+hold off;
+
+
+% theta_dot
+subplot(2, 2, 4);
+plot(tspan, all_theta_dot, 'b','LineWidth', 1);
+xlabel('Time (s)');
+ylabel('Pendulum Angular Velocity theta_dot (rad/s)');
+title('Pendulum Angular Velocity');
+grid on;
+hold on;
+plot(tspan, all_theta_dot(:, 1), 'k', 'LineWidth', 2); 
+hold off;
+
+
+ % nonlinear dynamics of the cart-pole - adapted from lecture slide 7
+
+function dx_dt = cart_pole_dynamics(x, M, m, L, b, g, K)
+   
+    Sx = sin(x(3));
+    Cx = cos(x(3));
+    r = [0; 0; pi; 0];  %reference pos
+    u = -K * (x-r); 
+    D = m*L*L*(M+m*(1-Cx^2));
+    dx_dt = zeros(4, 1);
+    dx_dt(1) = x(2);
+    dx_dt(2) = (1/D)*(-m^2*L^2*g*Cx*Sx + m*L^2*(m*L*x(4)^2*Sx - b*x(2))) + m*L*L*(1/D)*u;
+    dx_dt(3) = x(4);
+    dx_dt(4) = (1/D)*((m+M)*m*g*L*Sx - m*L*Cx*(m*L*x(4)^2*Sx - b*x(2))) - m*L*Cx*(1/D)*u;
+
+end
